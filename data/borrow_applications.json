@@ -1,0 +1,88 @@
+[
+  {
+    "application_id": "APPdfb29761f0e4",
+    "activity_name": "社团招新活动",
+    "applicant": "张三",
+    "applicant_phone": "13800138000",
+    "items": [
+      {
+        "material_id": "MAT001",
+        "material_name": "桌牌-标准款",
+        "material_type": "桌牌",
+        "requested_quantity": 10,
+        "picked_quantity": 10,
+        "returned_quantity": 9,
+        "damaged_quantity": 1,
+        "damage_note": "边缘有裂纹"
+      },
+      {
+        "material_id": "MAT002",
+        "material_name": "扩音器-手持",
+        "material_type": "扩音器",
+        "requested_quantity": 3,
+        "picked_quantity": 2,
+        "returned_quantity": 2,
+        "damaged_quantity": 0,
+        "damage_note": null
+      }
+    ],
+    "purpose": "招新现场使用",
+    "expected_pickup_date": "2026-06-13",
+    "expected_return_date": "2026-06-15",
+    "status": "已完成",
+    "created_by": "operator",
+    "created_at": "2026-06-12T08:11:58.110770",
+    "reviewed_by": "auditor",
+    "reviewed_at": "2026-06-12T08:11:58.141342",
+    "review_comment": "同意借用，请注意爱护物资; 异常审核: 损坏情况已确认，记录在案",
+    "picked_up_by": "operator",
+    "picked_up_at": "2026-06-12T08:11:58.132681",
+    "returned_by": "operator",
+    "returned_at": "2026-06-12T08:11:58.137007",
+    "exception_note": "存在损坏或异常归还",
+    "supplement_note": "活动已顺利结束"
+  },
+  {
+    "application_id": "APPd9e7dc543de4",
+    "activity_name": "学术讲座",
+    "applicant": "李四",
+    "applicant_phone": null,
+    "items": [
+      {
+        "material_id": "MAT003",
+        "material_name": "折叠桌-长方形",
+        "material_type": "折叠桌",
+        "requested_quantity": 5,
+        "picked_quantity": 0,
+        "returned_quantity": 0,
+        "damaged_quantity": 0,
+        "damage_note": null
+      },
+      {
+        "material_id": "MAT004",
+        "material_name": "指示架-L型",
+        "material_type": "指示架",
+        "requested_quantity": 8,
+        "picked_quantity": 0,
+        "returned_quantity": 0,
+        "damaged_quantity": 0,
+        "damage_note": null
+      }
+    ],
+    "purpose": "讲座场地布置",
+    "expected_pickup_date": null,
+    "expected_return_date": null,
+    "status": "待审核",
+    "created_by": "operator",
+    "created_at": "2026-06-12T08:11:58.117765",
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "review_comment": null,
+    "picked_up_by": null,
+    "picked_up_at": null,
+    "returned_by": null,
+    "returned_at": null,
+    "exception_note": null,
+    "supplement_note": null
+  }
+]

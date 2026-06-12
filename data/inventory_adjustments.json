@@ -1,0 +1,12 @@
+[
+  {
+    "adjustment_id": "ADJ561c5de19157",
+    "material_id": "MAT001",
+    "material_name": "桌牌-标准款",
+    "before_quantity": 50,
+    "after_quantity": 48,
+    "reason": "盘点时发现实物与账面不符，修正",
+    "handled_by": "auditor",
+    "handled_at": "2026-06-12T08:11:58.165736"
+  }
+]
