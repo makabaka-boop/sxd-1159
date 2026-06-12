@@ -1,12 +1,13 @@
 import uuid
 import io
 import csv
-from datetime import datetime
+from datetime import datetime, date
 from typing import List, Optional, Tuple, Dict
 
 from .models import (
     User, Material, StorageArea, BorrowRule, BorrowItem,
-    BorrowApplication, BorrowStatus, InventoryAdjustment, MaterialType
+    BorrowApplication, BorrowStatus, InventoryAdjustment, MaterialType,
+    DueReminderStatus
 )
 from .database import (
     MaterialDB, StorageAreaDB, BorrowRuleDB, BorrowApplicationDB, InventoryAdjustmentDB
@@ -24,8 +25,54 @@ from .schemas import (
     BorrowRuleCreate, BorrowRuleUpdate, BorrowApplicationCreate,
     BorrowApplicationUpdate, BatchImportRow, BatchImportResult,
     ReturnRequest, ReviewRequest, ExceptionConfirmRequest,
-    InventoryAdjustmentCreate, QueryParams
+    InventoryAdjustmentCreate, QueryParams, DueReminderInfo
 )
+
+
+APPROACHING_DUE_DAYS = 3
+
+
+def compute_due_reminder(app: BorrowApplication) -> DueReminderInfo:
+    active_statuses = {BorrowStatus.APPROVED, BorrowStatus.PICKED_UP, BorrowStatus.PARTIAL_RETURN}
+    if app.status not in active_statuses or not app.expected_return_date:
+        return DueReminderInfo(
+            due_reminder_status=DueReminderStatus.NOT_APPLICABLE,
+            approaching_due=False,
+            overdue=False,
+            overdue_days=None
+        )
+    try:
+        return_date = datetime.fromisoformat(app.expected_return_date).date()
+    except (ValueError, TypeError):
+        return DueReminderInfo(
+            due_reminder_status=DueReminderStatus.NOT_APPLICABLE,
+            approaching_due=False,
+            overdue=False,
+            overdue_days=None
+        )
+    today = date.today()
+    days_diff = (return_date - today).days
+    if days_diff < 0:
+        return DueReminderInfo(
+            due_reminder_status=DueReminderStatus.OVERDUE,
+            approaching_due=False,
+            overdue=True,
+            overdue_days=abs(days_diff)
+        )
+    elif days_diff <= APPROACHING_DUE_DAYS:
+        return DueReminderInfo(
+            due_reminder_status=DueReminderStatus.APPROACHING_DUE,
+            approaching_due=True,
+            overdue=False,
+            overdue_days=None
+        )
+    else:
+        return DueReminderInfo(
+            due_reminder_status=DueReminderStatus.NORMAL,
+            approaching_due=False,
+            overdue=False,
+            overdue_days=None
+        )
 
 
 def gen_id(prefix: str = "") -> str:
@@ -483,6 +530,10 @@ class BorrowApplicationService:
             if params.material_type:
                 if not any(it.material_type == params.material_type for it in app.items):
                     continue
+            if params.due_reminder_status:
+                reminder = compute_due_reminder(app)
+                if reminder.due_reminder_status != params.due_reminder_status:
+                    continue
             if params.date_from:
                 try:
                     df = datetime.fromisoformat(params.date_from)
@@ -686,6 +737,95 @@ class StatisticsService:
             "total_backlog": len(pending) + len(exception_pending)
         }
 
+    @staticmethod
+    def return_reminder(
+        activity_name: Optional[str] = None,
+        applicant: Optional[str] = None,
+        material_type: Optional[MaterialType] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None
+    ) -> dict:
+        apps = BorrowApplicationDB.get_all()
+        apps = _filter_apps(apps, activity_name, applicant, material_type, date_from, date_to)
+        active_statuses = {BorrowStatus.APPROVED, BorrowStatus.PICKED_UP, BorrowStatus.PARTIAL_RETURN}
+        pending_apps = [a for a in apps if a.status in active_statuses]
+
+        by_material_type: Dict[str, dict] = {}
+        by_applicant: Dict[str, dict] = {}
+        by_activity: Dict[str, dict] = {}
+        detail_items = []
+
+        for a in pending_apps:
+            reminder = compute_due_reminder(a)
+            if a.status == BorrowStatus.APPROVED:
+                total_pending = sum(it.requested_quantity for it in a.items)
+            else:
+                total_pending = sum(it.picked_quantity - it.returned_quantity - it.damaged_quantity for it in a.items)
+            is_overdue = reminder.overdue
+            is_approaching = reminder.approaching_due
+
+            detail_items.append({
+                "application_id": a.application_id,
+                "activity_name": a.activity_name,
+                "applicant": a.applicant,
+                "status": a.status.value,
+                "expected_return_date": a.expected_return_date,
+                "due_reminder_status": reminder.due_reminder_status.value,
+                "approaching_due": is_approaching,
+                "overdue": is_overdue,
+                "overdue_days": reminder.overdue_days,
+                "pending_return_quantity": total_pending
+            })
+
+            for it in a.items:
+                if a.status == BorrowStatus.APPROVED:
+                    item_pending = it.requested_quantity
+                else:
+                    item_pending = it.picked_quantity - it.returned_quantity - it.damaged_quantity
+                if item_pending <= 0:
+                    continue
+                mt = it.material_type.value
+                if mt not in by_material_type:
+                    by_material_type[mt] = {"pending_return": 0, "overdue": 0}
+                by_material_type[mt]["pending_return"] += item_pending
+                if is_overdue:
+                    by_material_type[mt]["overdue"] += item_pending
+
+            ap = a.applicant
+            if ap not in by_applicant:
+                by_applicant[ap] = {"pending_return": 0, "overdue": 0}
+            by_applicant[ap]["pending_return"] += total_pending
+            if is_overdue:
+                by_applicant[ap]["overdue"] += total_pending
+
+            an = a.activity_name
+            if an not in by_activity:
+                by_activity[an] = {"pending_return": 0, "overdue": 0}
+            by_activity[an]["pending_return"] += total_pending
+            if is_overdue:
+                by_activity[an]["overdue"] += total_pending
+
+        total_pending_all = sum(v["pending_return"] for v in by_material_type.values())
+        total_overdue_all = sum(v["overdue"] for v in by_material_type.values())
+        return {
+            "filter": {
+                "activity_name": activity_name,
+                "applicant": applicant,
+                "material_type": material_type.value if material_type else None,
+                "date_from": date_from,
+                "date_to": date_to
+            },
+            "summary": {
+                "total_pending_return": total_pending_all,
+                "total_overdue": total_overdue_all,
+                "total_approaching_due": sum(1 for d in detail_items if d["approaching_due"])
+            },
+            "by_material_type": by_material_type,
+            "by_applicant": by_applicant,
+            "by_activity": by_activity,
+            "items": detail_items
+        }
+
 
 class ExportService:
     @staticmethod
@@ -699,9 +839,11 @@ class ExportService:
                 "领用人", "领用时间", "归还人", "归还时间",
                 "物资编号", "物资名称", "物资类型",
                 "申请数量", "已领数量", "已还数量", "损坏数量", "损坏说明",
-                "活动用途", "预计领用日期", "预计归还日期", "补充说明", "异常说明"
+                "活动用途", "预计领用日期", "预计归还日期", "补充说明", "异常说明",
+                "到期提醒状态", "是否临近到期", "是否已逾期", "逾期天数"
             ])
             for a in apps:
+                reminder = compute_due_reminder(a)
                 for it in a.items:
                     writer.writerow([
                         a.application_id, a.activity_name, a.applicant, a.applicant_phone or "",
@@ -712,7 +854,11 @@ class ExportService:
                         it.requested_quantity, it.picked_quantity, it.returned_quantity,
                         it.damaged_quantity, it.damage_note or "",
                         a.purpose or "", a.expected_pickup_date or "", a.expected_return_date or "",
-                        a.supplement_note or "", a.exception_note or ""
+                        a.supplement_note or "", a.exception_note or "",
+                        reminder.due_reminder_status.value,
+                        "是" if reminder.approaching_due else "否",
+                        "是" if reminder.overdue else "否",
+                        reminder.overdue_days if reminder.overdue_days is not None else ""
                     ])
             content = output.getvalue().encode("utf-8-sig")
             filename = f"borrow_applications_{datetime.now().strftime('%Y%m%d%H%M%S')}.csv"

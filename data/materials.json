@@ -1,24 +1,13 @@
 [
   {
-    "material_id": "MAT001",
-    "name": "桌牌-标准款",
+    "material_id": "M1",
+    "name": "桌牌1",
     "material_type": "桌牌",
-    "storage_area": "AREA01",
-    "total_quantity": 50,
-    "available_quantity": 49,
+    "storage_area": "A1",
+    "total_quantity": 10,
+    "available_quantity": 10,
     "description": null,
-    "created_at": "2026-06-12T11:11:13.724155",
-    "updated_at": "2026-06-12T11:11:13.886453"
-  },
-  {
-    "material_id": "MAT002",
-    "name": "扩音器-手持",
-    "material_type": "扩音器",
-    "storage_area": "AREA01",
-    "total_quantity": 20,
-    "available_quantity": 20,
-    "description": null,
-    "created_at": "2026-06-12T11:11:13.728002",
-    "updated_at": "2026-06-12T11:11:13.887075"
+    "created_at": "2026-06-12T19:08:54.538043",
+    "updated_at": "2026-06-12T19:08:54.538043"
   }
 ]

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
-from .models import MaterialType, BorrowStatus, UserRole
+from .models import MaterialType, BorrowStatus, UserRole, DueReminderStatus
 
 
 class Token(BaseModel):
@@ -156,7 +156,15 @@ class QueryParams(BaseModel):
     applicant: Optional[str] = None
     material_type: Optional[MaterialType] = None
     status: Optional[BorrowStatus] = None
+    due_reminder_status: Optional[DueReminderStatus] = None
     date_from: Optional[str] = None
     date_to: Optional[str] = None
     page: int = Field(1, ge=1)
     page_size: int = Field(20, ge=1, le=100000)
+
+
+class DueReminderInfo(BaseModel):
+    due_reminder_status: DueReminderStatus
+    approaching_due: bool
+    overdue: bool
+    overdue_days: Optional[int] = None

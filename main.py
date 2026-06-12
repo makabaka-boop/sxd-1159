@@ -9,7 +9,7 @@ from app.auth import (
     authenticate_user, create_access_token, get_current_user,
     require_roles, init_default_users, ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from app.models import UserRole, MaterialType, BorrowStatus
+from app.models import UserRole, MaterialType, BorrowStatus, DueReminderStatus
 from app.schemas import (
     Token, UserInfo, MaterialCreate, MaterialUpdate,
     StorageAreaCreate, StorageAreaUpdate,
@@ -22,7 +22,7 @@ from app.schemas import (
 from app.services import (
     MaterialService, StorageAreaService, BorrowRuleService,
     BorrowApplicationService, InventoryService,
-    StatisticsService, ExportService
+    StatisticsService, ExportService, compute_due_reminder
 )
 import csv
 import io
@@ -278,6 +278,7 @@ def query_applications(
     applicant: Optional[str] = None,
     material_type: Optional[MaterialType] = None,
     status: Optional[BorrowStatus] = None,
+    due_reminder_status: Optional[DueReminderStatus] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     page: int = Query(1, ge=1),
@@ -289,17 +290,24 @@ def query_applications(
         applicant=applicant,
         material_type=material_type,
         status=status,
+        due_reminder_status=due_reminder_status,
         date_from=date_from,
         date_to=date_to,
         page=page,
         page_size=page_size
     )
     items, total = BorrowApplicationService.query(params)
+    enriched_items = []
+    for item in items:
+        app_dict = item.model_dump()
+        reminder = compute_due_reminder(item)
+        app_dict["due_reminder"] = reminder.model_dump()
+        enriched_items.append(app_dict)
     return {
         "total": total,
         "page": page,
         "page_size": page_size,
-        "items": items
+        "items": enriched_items
     }
 
 
@@ -308,7 +316,10 @@ def get_application(app_id: str, current_user=Depends(get_current_user)):
     app = BorrowApplicationService.get_by_id(app_id)
     if not app:
         raise HTTPException(status_code=404, detail="申请不存在")
-    return app
+    app_dict = app.model_dump()
+    reminder = compute_due_reminder(app)
+    app_dict["due_reminder"] = reminder.model_dump()
+    return app_dict
 
 
 @app.get("/api/statistics/inventory-occupation", tags=["查询与统计"])
@@ -355,12 +366,31 @@ def stat_review_backlog(
     )
 
 
+@app.get("/api/statistics/return-reminder", tags=["查询与统计"])
+def stat_return_reminder(
+    activity_name: Optional[str] = None,
+    applicant: Optional[str] = None,
+    material_type: Optional[MaterialType] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    current_user=Depends(get_current_user)
+):
+    return StatisticsService.return_reminder(
+        activity_name=activity_name,
+        applicant=applicant,
+        material_type=material_type,
+        date_from=date_from,
+        date_to=date_to
+    )
+
+
 @app.get("/api/export/applications", tags=["导出"])
 def export_applications(
     activity_name: Optional[str] = None,
     applicant: Optional[str] = None,
     material_type: Optional[MaterialType] = None,
     status: Optional[BorrowStatus] = None,
+    due_reminder_status: Optional[DueReminderStatus] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     fmt: str = Query("csv", pattern="^csv$"),
@@ -371,6 +401,7 @@ def export_applications(
         applicant=applicant,
         material_type=material_type,
         status=status,
+        due_reminder_status=due_reminder_status,
         date_from=date_from,
         date_to=date_to,
         page=1,
@@ -398,6 +429,11 @@ def list_borrow_statuses():
 @app.get("/api/meta/user-roles", tags=["元数据"])
 def list_user_roles():
     return [{"key": r.name, "value": r.value} for r in UserRole]
+
+
+@app.get("/api/meta/due-reminder-statuses", tags=["元数据"])
+def list_due_reminder_statuses():
+    return [{"key": s.name, "value": s.value} for s in DueReminderStatus]
 
 
 if __name__ == "__main__":

@@ -28,6 +28,13 @@ class BorrowStatus(str, Enum):
     CANCELLED = "已取消"
 
 
+class DueReminderStatus(str, Enum):
+    NORMAL = "正常"
+    APPROACHING_DUE = "临近到期"
+    OVERDUE = "已逾期"
+    NOT_APPLICABLE = "无关"
+
+
 class User(BaseModel):
     username: str
     password_hash: str
