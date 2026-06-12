@@ -4,11 +4,11 @@
     "name": "桌牌-标准款",
     "material_type": "桌牌",
     "storage_area": "AREA01",
-    "total_quantity": 48,
-    "available_quantity": 47,
-    "description": "A4亚克力桌牌",
-    "created_at": "2026-06-12T08:11:58.073023",
-    "updated_at": "2026-06-12T08:11:58.165289"
+    "total_quantity": 50,
+    "available_quantity": 49,
+    "description": null,
+    "created_at": "2026-06-12T11:11:13.724155",
+    "updated_at": "2026-06-12T11:11:13.886453"
   },
   {
     "material_id": "MAT002",
@@ -17,41 +17,8 @@
     "storage_area": "AREA01",
     "total_quantity": 20,
     "available_quantity": 20,
-    "description": "带麦扩音器",
-    "created_at": "2026-06-12T08:11:58.079641",
-    "updated_at": "2026-06-12T08:11:58.136806"
-  },
-  {
-    "material_id": "MAT003",
-    "name": "折叠桌-长方形",
-    "material_type": "折叠桌",
-    "storage_area": "AREA01",
-    "total_quantity": 30,
-    "available_quantity": 30,
-    "description": "1.2m折叠桌",
-    "created_at": "2026-06-12T08:11:58.089873",
-    "updated_at": "2026-06-12T08:11:58.089873"
-  },
-  {
-    "material_id": "MAT004",
-    "name": "指示架-L型",
-    "material_type": "指示架",
-    "storage_area": "AREA01",
-    "total_quantity": 25,
-    "available_quantity": 25,
     "description": null,
-    "created_at": "2026-06-12T08:11:58.093001",
-    "updated_at": "2026-06-12T08:11:58.093001"
-  },
-  {
-    "material_id": "MAT005",
-    "name": "签到器-电子",
-    "material_type": "签到器",
-    "storage_area": "AREA01",
-    "total_quantity": 10,
-    "available_quantity": 10,
-    "description": null,
-    "created_at": "2026-06-12T08:11:58.099556",
-    "updated_at": "2026-06-12T08:11:58.099556"
+    "created_at": "2026-06-12T11:11:13.728002",
+    "updated_at": "2026-06-12T11:11:13.887075"
   }
 ]

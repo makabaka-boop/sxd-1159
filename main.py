@@ -232,7 +232,7 @@ def return_materials(data: ReturnRequest, current_user=Depends(require_roles(Use
 
 
 @app.post("/api/operator/applications/{app_id}/cancel", tags=["操作员-借用申请"])
-def cancel_application(app_id: str, current_user=Depends(require_roles(UserRole.OPERATOR, UserRole.ADMIN, UserRole.AUDITOR))):
+def cancel_application(app_id: str, current_user=Depends(require_roles(UserRole.OPERATOR, UserRole.ADMIN))):
     try:
         return BorrowApplicationService.cancel(app_id, current_user)
     except ValueError as e:
@@ -312,18 +312,47 @@ def get_application(app_id: str, current_user=Depends(get_current_user)):
 
 
 @app.get("/api/statistics/inventory-occupation", tags=["查询与统计"])
-def stat_inventory_occupation(current_user=Depends(get_current_user)):
-    return StatisticsService.inventory_occupation()
+def stat_inventory_occupation(
+    material_type: Optional[MaterialType] = None,
+    current_user=Depends(get_current_user)
+):
+    return StatisticsService.inventory_occupation(material_type=material_type)
 
 
 @app.get("/api/statistics/exception-returns", tags=["查询与统计"])
-def stat_exception_returns(current_user=Depends(get_current_user)):
-    return StatisticsService.exception_returns()
+def stat_exception_returns(
+    activity_name: Optional[str] = None,
+    applicant: Optional[str] = None,
+    material_type: Optional[MaterialType] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    current_user=Depends(get_current_user)
+):
+    return StatisticsService.exception_returns(
+        activity_name=activity_name,
+        applicant=applicant,
+        material_type=material_type,
+        date_from=date_from,
+        date_to=date_to
+    )
 
 
 @app.get("/api/statistics/review-backlog", tags=["查询与统计"])
-def stat_review_backlog(current_user=Depends(get_current_user)):
-    return StatisticsService.review_backlog()
+def stat_review_backlog(
+    activity_name: Optional[str] = None,
+    applicant: Optional[str] = None,
+    material_type: Optional[MaterialType] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    current_user=Depends(get_current_user)
+):
+    return StatisticsService.review_backlog(
+        activity_name=activity_name,
+        applicant=applicant,
+        material_type=material_type,
+        date_from=date_from,
+        date_to=date_to
+    )
 
 
 @app.get("/api/export/applications", tags=["导出"])

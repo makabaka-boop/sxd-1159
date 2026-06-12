@@ -11,6 +11,14 @@ from .models import (
 from .database import (
     MaterialDB, StorageAreaDB, BorrowRuleDB, BorrowApplicationDB, InventoryAdjustmentDB
 )
+
+def _get_applicable_rule(material_type: Optional[MaterialType]) -> Optional[BorrowRule]:
+    rules = BorrowRuleDB.get_all()
+    specific_rule = next((r for r in rules if r.material_type == material_type), None)
+    if specific_rule:
+        return specific_rule
+    general_rule = next((r for r in rules if r.material_type is None), None)
+    return general_rule
 from .schemas import (
     MaterialCreate, MaterialUpdate, StorageAreaCreate, StorageAreaUpdate,
     BorrowRuleCreate, BorrowRuleUpdate, BorrowApplicationCreate,
@@ -37,6 +45,13 @@ class MaterialService:
     def create(data: MaterialCreate) -> Material:
         if MaterialDB.get_by_id(data.material_id):
             raise ValueError(f"物资编号 {data.material_id} 已存在")
+        if not data.storage_area or not data.storage_area.strip():
+            raise ValueError("存放区域不能为空")
+        areas = StorageAreaDB.get_all()
+        area_ids = {a.area_id for a in areas}
+        area_names = {a.name for a in areas}
+        if data.storage_area not in area_ids and data.storage_area not in area_names:
+            raise ValueError(f"存放区域 {data.storage_area} 不存在，请先创建存放区域")
         now = datetime.now().isoformat()
         mat = Material(
             material_id=data.material_id,
@@ -165,11 +180,35 @@ class BorrowApplicationService:
     def create(data: BorrowApplicationCreate, creator: User) -> BorrowApplication:
         if not data.activity_name or not data.activity_name.strip():
             raise ValueError("活动名称不能为空")
+        if not data.applicant or not data.applicant.strip():
+            raise ValueError("申请人不能为空")
         items = BorrowApplicationService._build_items(data.items)
+
+        qty_by_type: Dict[MaterialType, int] = {}
+        for it in items:
+            qty_by_type[it.material_type] = qty_by_type.get(it.material_type, 0) + it.requested_quantity
+
+        for mt, qty in qty_by_type.items():
+            rule = _get_applicable_rule(mt)
+            if rule:
+                if rule.max_quantity and qty > rule.max_quantity:
+                    raise ValueError(f"物资类型 {mt.value} 单次借用数量 {qty} 超过规则限制 {rule.max_quantity}")
+                if rule.max_days and data.expected_pickup_date and data.expected_return_date:
+                    from datetime import datetime as dt
+                    try:
+                        d1 = dt.fromisoformat(data.expected_pickup_date)
+                        d2 = dt.fromisoformat(data.expected_return_date)
+                    except ValueError:
+                        pass
+                    else:
+                        days = (d2 - d1).days
+                        if days > rule.max_days:
+                            raise ValueError(f"借用时长 {days} 天超过规则限制 {rule.max_days} 天")
+
         app = BorrowApplication(
             application_id=gen_id("APP"),
             activity_name=data.activity_name.strip(),
-            applicant=data.applicant,
+            applicant=data.applicant.strip(),
             applicant_phone=data.applicant_phone,
             items=items,
             purpose=data.purpose,
@@ -300,8 +339,27 @@ class BorrowApplicationService:
             raise ValueError("申请不存在")
         if app.status not in (BorrowStatus.APPROVED, BorrowStatus.PARTIAL_RETURN):
             raise ValueError("仅已通过或部分归还状态可领用")
+        if not item_quantities or len(item_quantities) == 0:
+            raise ValueError("请传入领用物品数据")
 
-        qty_map = {iq["material_id"]: int(iq.get("quantity", 0)) for iq in item_quantities}
+        valid_material_ids = {it.material_id for it in app.items}
+        qty_map = {}
+        for i, iq in enumerate(item_quantities, start=1):
+            mid = iq.get("material_id")
+            qty_raw = iq.get("quantity")
+            if not mid:
+                raise ValueError(f"第 {i} 条数据缺少物资编号")
+            if mid not in valid_material_ids:
+                raise ValueError(f"物资编号 {mid} 不在此申请单中")
+            try:
+                qty = int(qty_raw) if qty_raw is not None else 0
+            except (ValueError, TypeError):
+                raise ValueError(f"物资 {mid} 的领用数量不合法: {qty_raw}")
+            if qty <= 0:
+                raise ValueError(f"物资 {mid} 的领用数量必须大于0")
+            if mid in qty_map:
+                raise ValueError(f"物资 {mid} 重复传入")
+            qty_map[mid] = qty
 
         for item in app.items:
             pick_qty = qty_map.get(item.material_id, 0)
@@ -478,12 +536,53 @@ class InventoryService:
         return InventoryAdjustmentDB.get_all()
 
 
+def _filter_apps(
+    apps: List[BorrowApplication],
+    activity_name: Optional[str] = None,
+    applicant: Optional[str] = None,
+    material_type: Optional[MaterialType] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None
+) -> List[BorrowApplication]:
+    filtered = []
+    for app in apps:
+        if activity_name and activity_name not in app.activity_name:
+            continue
+        if applicant and applicant not in app.applicant:
+            continue
+        if material_type:
+            if not any(it.material_type == material_type for it in app.items):
+                continue
+        if date_from:
+            try:
+                df = datetime.fromisoformat(date_from)
+                ca = datetime.fromisoformat(app.created_at)
+                if ca < df:
+                    continue
+            except ValueError:
+                pass
+        if date_to:
+            try:
+                dt = datetime.fromisoformat(date_to)
+                ca = datetime.fromisoformat(app.created_at)
+                if ca > dt:
+                    continue
+            except ValueError:
+                pass
+        filtered.append(app)
+    return filtered
+
+
 class StatisticsService:
     @staticmethod
-    def inventory_occupation() -> dict:
+    def inventory_occupation(
+        material_type: Optional[MaterialType] = None
+    ) -> dict:
         materials = MaterialDB.get_all()
         by_type: Dict[str, dict] = {}
         for m in materials:
+            if material_type and m.material_type != material_type:
+                continue
             t = m.material_type.value
             if t not in by_type:
                 by_type[t] = {"total": 0, "occupied": 0, "available": 0}
@@ -492,6 +591,7 @@ class StatisticsService:
             by_type[t]["occupied"] += occupied
             by_type[t]["available"] += m.available_quantity
         return {
+            "filter": {"material_type": material_type.value if material_type else None},
             "by_type": by_type,
             "total_all": sum(v["total"] for v in by_type.values()),
             "occupied_all": sum(v["occupied"] for v in by_type.values()),
@@ -499,8 +599,15 @@ class StatisticsService:
         }
 
     @staticmethod
-    def exception_returns() -> dict:
+    def exception_returns(
+        activity_name: Optional[str] = None,
+        applicant: Optional[str] = None,
+        material_type: Optional[MaterialType] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None
+    ) -> dict:
         apps = BorrowApplicationDB.get_all()
+        apps = _filter_apps(apps, activity_name, applicant, material_type, date_from, date_to)
         exception_list = []
         for app in apps:
             damaged_items = [it for it in app.items if it.damaged_quantity > 0]
@@ -522,16 +629,37 @@ class StatisticsService:
                     "returned_at": app.returned_at
                 })
         return {
+            "filter": {
+                "activity_name": activity_name,
+                "applicant": applicant,
+                "material_type": material_type.value if material_type else None,
+                "date_from": date_from,
+                "date_to": date_to
+            },
             "total": len(exception_list),
             "items": exception_list
         }
 
     @staticmethod
-    def review_backlog() -> dict:
+    def review_backlog(
+        activity_name: Optional[str] = None,
+        applicant: Optional[str] = None,
+        material_type: Optional[MaterialType] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None
+    ) -> dict:
         apps = BorrowApplicationDB.get_all()
+        apps = _filter_apps(apps, activity_name, applicant, material_type, date_from, date_to)
         pending = [a for a in apps if a.status == BorrowStatus.PENDING]
         exception_pending = [a for a in apps if a.status == BorrowStatus.EXCEPTION_PENDING]
         return {
+            "filter": {
+                "activity_name": activity_name,
+                "applicant": applicant,
+                "material_type": material_type.value if material_type else None,
+                "date_from": date_from,
+                "date_to": date_to
+            },
             "pending_review": {
                 "count": len(pending),
                 "items": [
